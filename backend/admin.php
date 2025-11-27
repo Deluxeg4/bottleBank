@@ -1,6 +1,7 @@
 <?php
 session_start();
-require_once __DIR__ . '/../database/database.php';
+// ตรวจสอบเส้นทางไฟล์ database.php ให้ถูกต้อง
+require_once __DIR__ . '/../database/database.php'; 
 
 // ถ้ายังไม่ login ให้เด้งไปหน้า login
 if (!isset($_SESSION['admin'])) {
@@ -49,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['firstName'])) {
 }
 
 // -----------------------------
-// 2) ดึงข้อมูลสถิติจากฐานข้อมูล
+// 2) ดึงข้อมูลสถิติจากฐานข้อมูล (ส่วนหัว)
 // -----------------------------
 
 // 2.1 คะแนนรวม, จำนวนรายการ, จำนวนขวดรวม
@@ -66,11 +67,10 @@ $totalScore   = (int)($stats['totalScore'] ?? 0);
 $totalEntries = (int)($stats['totalEntries'] ?? 0);
 $totalBottles = (int)($stats['totalBottles'] ?? 0);
 
-// 2.2 จำนวนประเภทขวด
+// 2.2 จำนวนประเภทขวดและรายละเอียด
 $stmt = $pdo->query("SELECT COUNT(DISTINCT bottle_type) AS bottleTypesCount FROM bottle_entries");
 $bottleTypesCount = (int)($stmt->fetchColumn() ?: 0);
 
-// 2.3 รายละเอียดจำนวนขวดแต่ละประเภท
 $stmt = $pdo->query("
     SELECT bottle_type, SUM(bottle_count) AS total_bottles
     FROM bottle_entries
@@ -89,13 +89,54 @@ if ($typeRows) {
     $bottleTypesDetailText = 'ยังไม่มีข้อมูล';
 }
 
-// 2.4 ดึงข้อมูลทั้งหมดสำหรับตารางรายการ
+// -----------------------------
+// 3) ดึงข้อมูลทั้งหมด & จัดกลุ่ม/ค้นหา (สำหรับตารางรายการ)
+// -----------------------------
+
+// 3.1 ดึงข้อมูลดิบทั้งหมด
 $stmt = $pdo->query("
     SELECT *
     FROM bottle_entries
     ORDER BY created_at DESC
 ");
-$entries = $stmt->fetchAll();
+$data = $stmt->fetchAll();
+
+// 3.2 Logic การค้นหาและจัดกลุ่ม
+$search_id = $_GET['search_id'] ?? '';
+$search_id = trim($search_id);
+
+$grouped_data = [];
+
+if (isset($data) && is_array($data)) {
+    foreach ($data as $row) {
+        $current_student_id = htmlspecialchars($row['student_id']);
+        
+        // กรองข้อมูลตาม student_id ที่ค้นหา
+        if (!empty($search_id) && $current_student_id !== $search_id) {
+            continue; 
+        }
+        
+        // กำหนดค่าเริ่มต้นสำหรับผู้ใช้ใหม่ (แก้ปัญหา Warning: Undefined array key)
+        if (!isset($grouped_data[$current_student_id])) {
+            $grouped_data[$current_student_id] = [
+                'full_name' => htmlspecialchars($row['first_name'] . ' ' . $row['last_name']),
+                'total_score' => 0,
+                'total_bottles' => 0,
+                'items' => [] 
+            ];
+        }
+        
+        // รวมคะแนนและจำนวนขวด
+        $score = (int)$row['score'];
+        $bottle_count = (int)$row['bottle_count'];
+        
+        $grouped_data[$current_student_id]['total_score'] += $score;
+        $grouped_data[$current_student_id]['total_bottles'] += $bottle_count;
+        
+        // เพิ่มข้อมูลรายการย่อย
+        $grouped_data[$current_student_id]['items'][] = $row;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -103,13 +144,11 @@ $entries = $stmt->fetchAll();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>แดชบอร์ดแอดมิน - ระบบจัดการข้อมูลขวด</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- สำหรับ chart (ถ้าอยากใช้ Chart.js) -->
+    <link rel="stylesheet" href="style.css"> 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="app-container">
-        <!-- Header -->
         <div style="text-align: right; margin: 10px;">
             <a href="logout.php" class="btn-logout">ออกจากระบบ</a>
         </div>
@@ -133,7 +172,6 @@ $entries = $stmt->fetchAll();
             </div>
         </div>
 
-        <!-- Form Card -->
         <div class="glass-card form-card">
             <div class="card-header">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -207,7 +245,6 @@ $entries = $stmt->fetchAll();
             </form>
         </div>
 
-        <!-- Stats Card -->
         <div class="glass-card stats-card">
             <div class="stats-header">
                 <div class="card-header">
@@ -218,7 +255,6 @@ $entries = $stmt->fetchAll();
                     </svg>
                     <h2>สถิติ</h2>
                 </div>
-
                 <div class="stats-controls">
                     <div class="tabs">
                         <button class="tab-btn active" data-period="day">รายวัน</button>
@@ -278,14 +314,8 @@ $entries = $stmt->fetchAll();
                     </div>
                 </div>
             </div>
-
-            <!-- Chart -->
-            <div class="chart-container">
-                <canvas id="statsChart"></canvas>
             </div>
-        </div>
 
-        <!-- Data Table -->
         <div class="glass-card table-card">
             <div class="card-header">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -296,48 +326,93 @@ $entries = $stmt->fetchAll();
                 </svg>
                 <h2>ข้อมูลทั้งหมด</h2>
             </div>
+            
+            <form method="GET" action="" style="margin-bottom: 2rem;">
+                <div class="form-row">
+                    <div class="form-group" style="grid-column: span 3;">
+                        <label for="search_id">ค้นหาด้วยเลขประจำตัวนักเรียน</label>
+                        <input type="text" id="search_id" name="search_id" 
+                               value="<?php echo htmlspecialchars($_GET['search_id'] ?? ''); ?>" 
+                               placeholder="ป้อนเลขประจำตัว">
+                    </div>
+                    <button type="submit" class="btn-submit" style="margin-top: 1.75rem;">
+                        <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg> ค้นหา
+                    </button>
+                </div>
+                <?php if (!empty($_GET['search_id'])): ?>
+                    <a href="?" class="btn-logout" style="background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.35); color: white; display: inline-flex;">
+                        ล้างการค้นหาทั้งหมด
+                    </a>
+                <?php endif; ?>
+            </form>
 
             <div id="dataTable" class="data-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>วันที่</th>
-                            <th>รหัสนักเรียน</th>
-                            <th>ชื่อ - นามสกุล</th>
-                            <th>คะแนน</th>
-                            <th>จำนวนขวด</th>
-                            <th>ประเภทขวด</th>
-                            <th>ขนาดขวด</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($entries)): ?>
-                            <tr>
-                                <td colspan="7" style="text-align:center; opacity:0.7;">
-                                    ยังไม่มีข้อมูล
-                                </td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($entries as $row): ?>
-                                <tr>
-                                    <td>
-                                        <?php 
-                                            echo htmlspecialchars(
-                                                date('d/m/Y H:i', strtotime($row['created_at']))
-                                            ); 
-                                        ?>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($row['student_id']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['first_name'] . ' ' . $row['last_name']); ?></td>
-                                    <td><?php echo (int)$row['score']; ?></td>
-                                    <td><?php echo (int)$row['bottle_count']; ?></td>
-                                    <td><?php echo htmlspecialchars($row['bottle_type']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['bottle_size']); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                <?php if (!empty($grouped_data)): ?>
+                    <?php 
+                    // วนซ้ำเพื่อแสดงแต่ละกลุ่มนักเรียน
+                    foreach ($grouped_data as $student_id => $group): 
+                    ?>
+                    
+                    <div class="student-group">
+                        <div class="student-header">
+                            <?php echo $group['full_name']; ?> 
+                            (ID: <?php echo $student_id; ?>)
+                            <span style="float: right; font-size: 1rem;">
+                                คะแนนรวม: <?php echo $group['total_score']; ?> | 
+                                จำนวนขวดรวม: <?php echo $group['total_bottles']; ?>
+                            </span>
+                        </div>
+                        
+                        <?php foreach ($group['items'] as $row): ?>
+                            <div class="entry-item">
+                                <div class="entry-details">
+                                    <div class="entry-field">
+                                        <div class="entry-label">วันที่/เวลา</div>
+                                        <div class="entry-value">
+                                            <?php echo date('d/m/Y H:i', strtotime($row['created_at'])); ?>
+                                        </div>
+                                    </div>
+                                    <div class="entry-field">
+                                        <div class="entry-label">รหัสนักเรียน</div>
+                                        <div class="entry-value"><?php echo htmlspecialchars($row['student_id']); ?></div>
+                                    </div>
+                                    <div class="entry-field">
+                                        <div class="entry-label">คะแนน</div>
+                                        <div class="entry-value"><?php echo (int)$row['score']; ?></div>
+                                    </div>
+                                    <div class="entry-field">
+                                        <div class="entry-label">จำนวนขวด</div>
+                                        <div class="entry-value"><?php echo (int)$row['bottle_count']; ?></div>
+                                    </div>
+                                    <div class="entry-field">
+                                        <div class="entry-label">ประเภท/ขนาด</div>
+                                        <div class="entry-value">
+                                            <?php echo htmlspecialchars($row['bottle_type']); ?> / 
+                                            <?php echo htmlspecialchars($row['bottle_size']); ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <button class="btn-delete" title="ลบรายการนี้">
+                                    <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="3 6 5 6 21 6"></polyline>
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        <?php endforeach; ?>
+
+                    </div>
+                    
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="empty-state">
+                        ไม่พบข้อมูลการทำรายการ<?php echo !empty($search_id) ? 'สำหรับเลขประจำตัว **' . $search_id . '**' : ''; ?>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
