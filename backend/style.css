@@ -6,6 +6,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* พื้นหลังไล่เฉดสีเขียว */
   background: linear-gradient(135deg, #059669 0%, #10b981 50%, #84cc16 100%);
   min-height: 100vh;
   padding: 1rem;
@@ -162,7 +163,7 @@ p {
 }
 
 .form-group select option {
-  background: #059669;
+  background: #059669; 
   color: white;
 }
 
@@ -252,11 +253,12 @@ p {
   filter: invert(1);
 }
 
+/* *** ปรับปรุง: Stats Grid ให้แสดง 3 คอลัมน์โดยไม่มีช่องว่างสำหรับ Chart *** */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1rem;
-  margin-bottom: 2rem;
+  /* ลบ margin-bottom: 2rem; ที่เดิมเว้นไว้ให้ chart */
 }
 
 .stat-box {
@@ -301,29 +303,27 @@ p {
   font-size: 0.75rem;
 }
 
-/* Chart */
+/* Chart - ลบออกตามคำขอ */
+/*
 .chart-container {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 16px;
-  padding: 1.5rem;
-  min-height: 300px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    display: none; 
 }
+*/
 
-#statsChart {
-  max-width: 100%;
-  max-height: 300px;
-}
+/* --- Data Table: ส่วนที่ใช้จัดกลุ่มข้อมูล --- */
 
-/* Data Table */
+/* container ของตารางทั้งหมด */
 .data-table {
   max-height: 600px;
   overflow-y: auto;
 }
 
+/* ซ่อนส่วนหัวตาราง HTML ที่ไม่จำเป็น */
+.data-table table {
+    display: none; 
+}
+
+/* กรอบแต่ละกลุ่มนักเรียน */
 .student-group {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -332,6 +332,7 @@ p {
   margin-bottom: 1.5rem;
 }
 
+/* แถบหัวข้อ/สรุปผลรวมของนักเรียนแต่ละคน */
 .student-header {
   color: white;
   font-size: 1.25rem;
@@ -339,8 +340,12 @@ p {
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex; 
+  justify-content: space-between;
+  flex-wrap: wrap;
 }
 
+/* รายการข้อมูลย่อยแต่ละรายการ */
 .entry-item {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -353,6 +358,7 @@ p {
   gap: 1rem;
 }
 
+/* รายละเอียดข้อมูลย่อย (ตะแกรง) */
 .entry-details {
   flex: 1;
   display: grid;
@@ -375,6 +381,7 @@ p {
   font-weight: 500;
 }
 
+/* ปุ่มลบ/แอคชัน */
 .btn-delete {
   background: rgba(239, 68, 68, 0.3);
   border: 1px solid rgba(239, 68, 68, 0.5);
@@ -396,6 +403,7 @@ p {
   padding: 3rem 1rem;
   color: rgba(255, 255, 255, 0.7);
 }
+
 
 /* Animations */
 @keyframes fadeIn {
@@ -446,6 +454,13 @@ p {
 
   .date-input {
     width: 100%;
+  }
+  
+  /* Responsive สำหรับแถบสรุปคะแนน (Student Header) */
+  .student-header span {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.9rem !important;
   }
 
   .entry-details {
