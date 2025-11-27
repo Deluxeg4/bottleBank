@@ -77,7 +77,7 @@ $stmt = $pdo->query("
     GROUP BY bottle_type
     ORDER BY total_bottles DESC
 ");
-$typeRows = $stmt->fetchAll();
+$typeRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 if ($typeRows) {
     $parts = [];
@@ -87,55 +87,6 @@ if ($typeRows) {
     $bottleTypesDetailText = implode(', ', $parts);
 } else {
     $bottleTypesDetailText = 'ยังไม่มีข้อมูล';
-}
-
-// -----------------------------
-// 3) ดึงข้อมูลทั้งหมด & จัดกลุ่ม/ค้นหา (สำหรับตารางรายการ)
-// -----------------------------
-
-// 3.1 ดึงข้อมูลดิบทั้งหมด
-$stmt = $pdo->query("
-    SELECT *
-    FROM bottle_entries
-    ORDER BY created_at DESC
-");
-$data = $stmt->fetchAll();
-
-// 3.2 Logic การค้นหาและจัดกลุ่ม
-$search_id = $_GET['search_id'] ?? '';
-$search_id = trim($search_id);
-
-$grouped_data = [];
-
-if (isset($data) && is_array($data)) {
-    foreach ($data as $row) {
-        $current_student_id = htmlspecialchars($row['student_id']);
-        
-        // กรองข้อมูลตาม student_id ที่ค้นหา
-        if (!empty($search_id) && $current_student_id !== $search_id) {
-            continue; 
-        }
-        
-        // กำหนดค่าเริ่มต้นสำหรับผู้ใช้ใหม่ (แก้ปัญหา Warning: Undefined array key)
-        if (!isset($grouped_data[$current_student_id])) {
-            $grouped_data[$current_student_id] = [
-                'full_name' => htmlspecialchars($row['first_name'] . ' ' . $row['last_name']),
-                'total_score' => 0,
-                'total_bottles' => 0,
-                'items' => [] 
-            ];
-        }
-        
-        // รวมคะแนนและจำนวนขวด
-        $score = (int)$row['score'];
-        $bottle_count = (int)$row['bottle_count'];
-        
-        $grouped_data[$current_student_id]['total_score'] += $score;
-        $grouped_data[$current_student_id]['total_bottles'] += $bottle_count;
-        
-        // เพิ่มข้อมูลรายการย่อย
-        $grouped_data[$current_student_id]['items'][] = $row;
-    }
 }
 ?>
 <!DOCTYPE html>
@@ -314,7 +265,7 @@ if (isset($data) && is_array($data)) {
                     </div>
                 </div>
             </div>
-            </div>
+        </div>
 
         <div class="glass-card table-card">
             <div class="card-header">
@@ -327,96 +278,164 @@ if (isset($data) && is_array($data)) {
                 <h2>ข้อมูลทั้งหมด</h2>
             </div>
             
-            <form method="GET" action="" style="margin-bottom: 2rem;">
-                <div class="form-row">
-                    <div class="form-group" style="grid-column: span 3;">
-                        <label for="search_id">ค้นหาด้วยเลขประจำตัวนักเรียน</label>
-                        <input type="text" id="search_id" name="search_id" 
-                               value="<?php echo htmlspecialchars($_GET['search_id'] ?? ''); ?>" 
-                               placeholder="ป้อนเลขประจำตัว">
-                    </div>
-                    <button type="submit" class="btn-submit" style="margin-top: 1.75rem;">
-                        <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <path d="m21 21-4.35-4.35"></path>
-                        </svg> ค้นหา
-                    </button>
-                </div>
-                <?php if (!empty($_GET['search_id'])): ?>
-                    <a href="?" class="btn-logout" style="background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.35); color: white; display: inline-flex;">
-                        ล้างการค้นหาทั้งหมด
-                    </a>
-                <?php endif; ?>
-            </form>
+            <!-- form แค่เอาไว้จัด layout ไม่ให้ submit จริง -->
+            <form id="searchForm" onsubmit="return false;" style="margin-bottom: 2rem;">
+    <div class="form-row">
+        <div class="form-group" style="grid-column: span 3;">
+            <label for="search_id">ค้นหาด้วยเลขประจำตัวนักเรียน</label>
+            <input type="text" id="search_id" name="search_id"
+                   placeholder="ป้อนเลขประจำตัว หรือบางส่วนของเลข">
+        </div>
+
+        <!-- ปุ่มค้นหาแบบเดิม -->
+        <button type="button" id="searchBtn" class="btn-submit" style="margin-top: 1.75rem;">
+            <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg> 
+            ค้นหา
+        </button>
+    </div>
+</form>
+
 
             <div id="dataTable" class="data-table">
-                <?php if (!empty($grouped_data)): ?>
-                    <?php 
-                    // วนซ้ำเพื่อแสดงแต่ละกลุ่มนักเรียน
-                    foreach ($grouped_data as $student_id => $group): 
-                    ?>
-                    
-                    <div class="student-group">
-                        <div class="student-header">
-                            <?php echo $group['full_name']; ?> 
-                            (ID: <?php echo $student_id; ?>)
-                            <span style="float: right; font-size: 1rem;">
-                                คะแนนรวม: <?php echo $group['total_score']; ?> | 
-                                จำนวนขวดรวม: <?php echo $group['total_bottles']; ?>
-                            </span>
-                        </div>
-                        
-                        <?php foreach ($group['items'] as $row): ?>
-                            <div class="entry-item">
-                                <div class="entry-details">
-                                    <div class="entry-field">
-                                        <div class="entry-label">วันที่/เวลา</div>
-                                        <div class="entry-value">
-                                            <?php echo date('d/m/Y H:i', strtotime($row['created_at'])); ?>
-                                        </div>
-                                    </div>
-                                    <div class="entry-field">
-                                        <div class="entry-label">รหัสนักเรียน</div>
-                                        <div class="entry-value"><?php echo htmlspecialchars($row['student_id']); ?></div>
-                                    </div>
-                                    <div class="entry-field">
-                                        <div class="entry-label">คะแนน</div>
-                                        <div class="entry-value"><?php echo (int)$row['score']; ?></div>
-                                    </div>
-                                    <div class="entry-field">
-                                        <div class="entry-label">จำนวนขวด</div>
-                                        <div class="entry-value"><?php echo (int)$row['bottle_count']; ?></div>
-                                    </div>
-                                    <div class="entry-field">
-                                        <div class="entry-label">ประเภท/ขนาด</div>
-                                        <div class="entry-value">
-                                            <?php echo htmlspecialchars($row['bottle_type']); ?> / 
-                                            <?php echo htmlspecialchars($row['bottle_size']); ?>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <button class="btn-delete" title="ลบรายการนี้">
-                                    <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="3 6 5 6 21 6"></polyline>
-                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                    </svg>
-                                </button>
-                            </div>
-                        <?php endforeach; ?>
-
-                    </div>
-                    
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <div class="empty-state">
-                        ไม่พบข้อมูลการทำรายการ<?php echo !empty($search_id) ? 'สำหรับเลขประจำตัว **' . $search_id . '**' : ''; ?>
-                    </div>
-                <?php endif; ?>
+                <div class="empty-state">กำลังโหลดข้อมูล...</div>
             </div>
         </div>
     </div>
 
     <script src="script.js"></script>
+
+    <!-- Live search ไม่ reload -->
+    <script>
+    const searchInput = document.getElementById("search_id");
+    const tableDiv = document.getElementById("dataTable");
+
+    async function loadData(query = "") {
+        try {
+            const res = await fetch("search.php?search=" + encodeURIComponent(query));
+            if (!res.ok) {
+                tableDiv.innerHTML = '<div class="empty-state">โหลดข้อมูลไม่สำเร็จ</div>';
+                return;
+            }
+            const items = await res.json();
+
+            if (!Array.isArray(items) || items.length === 0) {
+                tableDiv.innerHTML = '<div class="empty-state">ไม่พบข้อมูล</div>';
+                return;
+            }
+
+            // จัดกลุ่มตาม student_id
+            const groups = {};
+            items.forEach(row => {
+                const sid = row.student_id;
+                if (!groups[sid]) {
+                    groups[sid] = {
+                        full_name: (row.first_name || "") + " " + (row.last_name || ""),
+                        total_score: 0,
+                        total_bottles: 0,
+                        rows: []
+                    };
+                }
+                groups[sid].total_score += parseInt(row.score || 0);
+                groups[sid].total_bottles += parseInt(row.bottle_count || 0);
+                groups[sid].rows.push(row);
+            });
+
+            // สร้าง HTML
+            let html = "";
+            for (const sid in groups) {
+                const g = groups[sid];
+                html += `
+                    <div class="student-group">
+                        <div class="student-header">
+                            ${escapeHtml(g.full_name)} (ID: ${escapeHtml(sid)})
+                            <span style="float: right; font-size: 1rem;">
+                                คะแนนรวม: ${g.total_score} |
+                                จำนวนขวดรวม: ${g.total_bottles}
+                            </span>
+                        </div>
+                `;
+                g.rows.forEach(r => {
+                    const createdAt = new Date(r.created_at);
+                    const createdText = isNaN(createdAt.getTime())
+                        ? r.created_at
+                        : createdAt.toLocaleString("th-TH", {
+                              year: "numeric",
+                              month: "2-digit",
+                              day: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false
+                          });
+
+                    html += `
+                        <div class="entry-item">
+                            <div class="entry-details">
+                                <div class="entry-field">
+                                    <div class="entry-label">วันที่/เวลา</div>
+                                    <div class="entry-value">${escapeHtml(createdText)}</div>
+                                </div>
+                                <div class="entry-field">
+                                    <div class="entry-label">รหัสนักเรียน</div>
+                                    <div class="entry-value">${escapeHtml(r.student_id)}</div>
+                                </div>
+                                <div class="entry-field">
+                                    <div class="entry-label">คะแนน</div>
+                                    <div class="entry-value">${parseInt(r.score || 0)}</div>
+                                </div>
+                                <div class="entry-field">
+                                    <div class="entry-label">จำนวนขวด</div>
+                                    <div class="entry-value">${parseInt(r.bottle_count || 0)}</div>
+                                </div>
+                                <div class="entry-field">
+                                    <div class="entry-label">ประเภท/ขนาด</div>
+                                    <div class="entry-value">
+                                        ${escapeHtml(r.bottle_type)} / ${escapeHtml(r.bottle_size)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button class="btn-delete" title="ลบรายการนี้ (ยังไม่ทำฟังก์ชัน)">
+                                <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+            }
+
+            tableDiv.innerHTML = html;
+
+        } catch (e) {
+            console.error(e);
+            tableDiv.innerHTML = '<div class="empty-state">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>';
+        }
+    }
+
+    // escape HTML กัน XSS
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return "";
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    // โหลดข้อมูลทั้งหมดตอนเปิดหน้า
+    loadData("");
+
+    // อัปเดตเมื่อพิมพ์ (Live search)
+    searchInput.addEventListener("input", () => {
+        const value = searchInput.value.trim();
+        loadData(value);
+    });
+    </script>
 </body>
 </html>
