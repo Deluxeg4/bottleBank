@@ -2,99 +2,100 @@
 session_start();
 require_once __DIR__ . '/../database/database.php';
 
-// Check if the user is logged in
+// ถ้ายังไม่ login ให้เด้งไปหน้า login
 if (!isset($_SESSION['admin'])) {
     header("Location: login.php");
     exit;
 }
 
-// Fetch admin user details
+// ดึงข้อมูลแอดมิน
 $username = $_SESSION['admin'];
 $stmt = $pdo->prepare("SELECT * FROM admin_users WHERE username = ?");
 $stmt->execute([$username]);
 $user = $stmt->fetch();
 
 // -----------------------------
-// 1) บันทึกข้อมูลจากฟอร์ม ถ้ามี POST
+// 1) รับและบันทึกข้อมูลจากฟอร์ม
 // -----------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['firstName'])) {
     $firstName   = trim($_POST['firstName']);
     $lastName    = trim($_POST['lastName']);
     $studentId   = trim($_POST['studentId']);
-    $score       = (int) ($_POST['score'] ?? 0);
-    $bottleCount = (int) ($_POST['bottleCount'] ?? 0);
-    $bottleType  = $_POST['bottleType'] ?? '';
-    $bottleSize  = $_POST['bottleSize'] ?? '';
+    $score       = (int)($_POST['score'] ?? 0);
+    $bottleCount = (int)($_POST['bottleCount'] ?? 0);
+    $bottleType  = trim($_POST['bottleType'] ?? 'พลาสติก');
+    $bottleSize  = trim($_POST['bottleSize'] ?? 'เล็ก');
 
     if ($firstName !== '' && $lastName !== '' && $studentId !== '') {
-        $insert = $pdo->prepare("
+        $stmt = $pdo->prepare("
             INSERT INTO bottle_entries 
-                (first_name, last_name, student_id, score, bottle_count, bottle_type, bottle_size, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+            (student_id, first_name, last_name, score, bottle_count, bottle_type, bottle_size)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ");
-        $insert->execute([
+        $stmt->execute([
+            $studentId,
             $firstName,
             $lastName,
-            $studentId,
             $score,
             $bottleCount,
             $bottleType,
             $bottleSize
         ]);
 
-        // กันการกด F5 แล้วข้อมูลซ้ำ
+        // ป้องกันการกด F5 แล้วข้อมูลซ้ำ (Post/Redirect/Get)
         header("Location: admin.php?success=1");
         exit;
     }
 }
 
 // -----------------------------
-// 2) ดึงสถิติรวม
+// 2) ดึงข้อมูลสถิติจากฐานข้อมูล
 // -----------------------------
-$statsStmt = $pdo->query("
+
+// 2.1 คะแนนรวม, จำนวนรายการ, จำนวนขวดรวม
+$stmt = $pdo->query("
     SELECT 
-        COALESCE(SUM(score), 0)        AS total_score,
-        COUNT(*)                       AS total_entries,
-        COALESCE(SUM(bottle_count), 0) AS total_bottles,
-        COUNT(DISTINCT bottle_type)    AS bottle_types_count
+        COALESCE(SUM(score), 0) AS totalScore,
+        COUNT(*) AS totalEntries,
+        COALESCE(SUM(bottle_count), 0) AS totalBottles
     FROM bottle_entries
 ");
-$stats = $statsStmt->fetch();
+$stats = $stmt->fetch();
 
-$totalScore       = $stats['total_score'] ?? 0;
-$totalEntries     = $stats['total_entries'] ?? 0;
-$totalBottles     = $stats['total_bottles'] ?? 0;
-$bottleTypesCount = $stats['bottle_types_count'] ?? 0;
+$totalScore   = (int)($stats['totalScore'] ?? 0);
+$totalEntries = (int)($stats['totalEntries'] ?? 0);
+$totalBottles = (int)($stats['totalBottles'] ?? 0);
 
-// -----------------------------
-// 3) ดึงรายละเอียดประเภทขวด
-// -----------------------------
-$typeStmt = $pdo->query("
+// 2.2 จำนวนประเภทขวด
+$stmt = $pdo->query("SELECT COUNT(DISTINCT bottle_type) AS bottleTypesCount FROM bottle_entries");
+$bottleTypesCount = (int)($stmt->fetchColumn() ?: 0);
+
+// 2.3 รายละเอียดจำนวนขวดแต่ละประเภท
+$stmt = $pdo->query("
     SELECT bottle_type, SUM(bottle_count) AS total_bottles
     FROM bottle_entries
     GROUP BY bottle_type
+    ORDER BY total_bottles DESC
 ");
-$typeRows = $typeStmt->fetchAll();
+$typeRows = $stmt->fetchAll();
 
-$bottleTypesDetailText = 'ไม่มีข้อมูล';
 if ($typeRows) {
     $parts = [];
     foreach ($typeRows as $row) {
-        $parts[] = htmlspecialchars($row['bottle_type']) . ' ' . (int)$row['total_bottles'] . ' ขวด';
+        $parts[] = $row['bottle_type'] . ': ' . (int)$row['total_bottles'] . ' ขวด';
     }
-    $bottleTypesDetailText = implode(' • ', $parts);
+    $bottleTypesDetailText = implode(', ', $parts);
+} else {
+    $bottleTypesDetailText = 'ยังไม่มีข้อมูล';
 }
 
-// -----------------------------
-// 4) ดึงข้อมูลทั้งหมดไปแสดงในตาราง
-// -----------------------------
-$entriesStmt = $pdo->query("
-    SELECT * 
+// 2.4 ดึงข้อมูลทั้งหมดสำหรับตารางรายการ
+$stmt = $pdo->query("
+    SELECT *
     FROM bottle_entries
-    ORDER BY created_at DESC, id DESC
+    ORDER BY created_at DESC
 ");
-$entries = $entriesStmt->fetchAll();
-
+$entries = $stmt->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -103,13 +104,16 @@ $entries = $entriesStmt->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>แดชบอร์ดแอดมิน - ระบบจัดการข้อมูลขวด</title>
     <link rel="stylesheet" href="style.css">
+    <!-- สำหรับ chart (ถ้าอยากใช้ Chart.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="app-container">
         <!-- Header -->
-<div style="text-align: right; margin: 10px;">
-    <a href="logout.php" class="btn-logout">ออกจากระบบ</a>
-</div>
+        <div style="text-align: right; margin: 10px;">
+            <a href="logout.php" class="btn-logout">ออกจากระบบ</a>
+        </div>
+
         <div class="glass-card header-card">
             <div class="header-content">
                 <div class="icon-box">
@@ -128,7 +132,6 @@ $entries = $entriesStmt->fetchAll();
                 </div>
             </div>
         </div>
-      
 
         <!-- Form Card -->
         <div class="glass-card form-card">
@@ -270,13 +273,13 @@ $entries = $entriesStmt->fetchAll();
                         <div class="stat-title">ประเภทขวด</div>
                         <div class="stat-value" id="bottleTypes"><?php echo (int)$bottleTypesCount; ?></div>
                         <div class="stat-subtitle" id="bottleTypesDetail">
-                            <?php echo $bottleTypesDetailText; ?>
+                            <?php echo htmlspecialchars($bottleTypesDetailText); ?>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Chart (ตอนนี้ให้ JS ใน script.js จัดการต่อ) -->
+            <!-- Chart -->
             <div class="chart-container">
                 <canvas id="statsChart"></canvas>
             </div>
