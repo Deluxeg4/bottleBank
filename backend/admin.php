@@ -82,7 +82,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>แดชบอร์ดแอดมิน - ระบบจัดการข้อมูลขวด</title>
     <link rel="stylesheet" href="style.css"> 
-    </head>
+</head>
 <body>
     <div class="app-container">
         <div style="text-align: right; margin: 10px;">
@@ -232,11 +232,21 @@
                 <h2>ข้อมูลทั้งหมด</h2>
             </div>
             
-            <form onsubmit="return false;" style="margin-bottom: 2rem; padding: 0 2rem;">
+            <!-- ฟอร์มค้นหา: เพิ่มปุ่มค้นหากลับมา แต่ไม่รีเฟรชหน้า -->
+            <form id="searchForm" onsubmit="return false;" style="margin-bottom: 2rem; padding: 0 2rem;">
                 <div class="form-row">
-                    <div class="form-group" style="grid-column: 1 / -1;">
+                    <div class="form-group">
                         <label for="search_id">ค้นหาด้วยเลขประจำตัวนักเรียน/ชื่อ</label>
                         <input type="text" id="search_id" name="search_id" placeholder="ป้อนเลขประจำตัว ชื่อ หรือนามสกุล">
+                    </div>
+                    <div class="form-group" style="align-self: flex-end;">
+                        <button type="button" id="searchBtn" class="btn-submit" style="margin-top: 0;">
+                            <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="m21 21-4.35-4.35"></path>
+                            </svg>
+                            ค้นหา
+                        </button>
                     </div>
                 </div>
             </form>
@@ -249,7 +259,8 @@
 
     <script>
         const searchInput = document.getElementById("search_id");
-        const tableDiv = document.getElementById("dataTable");
+        const searchBtn   = document.getElementById("searchBtn");
+        const tableDiv    = document.getElementById("dataTable");
 
         // 1. ฟังก์ชันโหลดข้อมูล (Live Search)
         async function loadData(query = "") {
@@ -333,7 +344,7 @@
 
                 tableDiv.innerHTML = html;
 
-                // **สำคัญ:** ผูก Event Listener ให้ปุ่มลบทุกปุ่ม
+                // ผูก Event Listener ให้ปุ่มลบทุกปุ่ม
                 document.querySelectorAll('.btn-delete').forEach(button => {
                     button.addEventListener('click', handleDelete);
                 });
@@ -349,21 +360,14 @@
             const button = e.currentTarget;
             const id = button.getAttribute('data-id');
 
-            // **ลบได้ทันที**
-
             const formData = new FormData();
             formData.append('id', id);
 
             try {
-                // ส่งคำขอ POST ไปยัง delete.php
                 const res = await fetch('delete.php', { method: 'POST', body: formData });
                 const result = await res.json();
                 
                 if(result.success) {
-                    // ไม่ต้อง alert ก็ได้ ถ้าอยากให้เร็ว
-                    // alert('ลบข้อมูลเรียบร้อย');
-                    
-                    // โหลดตารางใหม่เพื่อให้ข้อมูลที่ลบหายไปจากหน้าจอ
                     loadData(searchInput.value.trim()); 
                 } else {
                     alert('เกิดข้อผิดพลาดในการลบ: ' + result.message);
@@ -388,8 +392,14 @@
         // โหลดข้อมูลทั้งหมดตอนเปิดหน้า
         loadData("");
 
-        // อัปเดตเมื่อพิมพ์ (Live search)
+        // Live search ขณะพิมพ์
         searchInput.addEventListener("input", () => {
+            const value = searchInput.value.trim();
+            loadData(value);
+        });
+
+        // ปุ่มค้นหา (เอาปุ่มคืนมา แต่ไม่รีเฟรชหน้า)
+        searchBtn.addEventListener("click", () => {
             const value = searchInput.value.trim();
             loadData(value);
         });
